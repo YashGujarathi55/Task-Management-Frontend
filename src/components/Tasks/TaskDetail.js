@@ -1,32 +1,38 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { taskService, userService } from "../../services/taskService";
+import { useAuth } from "../../contexts/AuthContext";
 
 function TaskDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth(); // 🔁 Get logged-in user from context
+
   const [task, setTask] = useState(null);
   const [users, setUsers] = useState([]);
   const [status, setStatus] = useState("");
   const [assignedTo, setAssignedTo] = useState("");
+  const [error, setError] = useState(null);
+
   const [isCreator, setIsCreator] = useState(false);
   const [isAssignee, setIsAssignee] = useState(false);
-  const [error, setError] = useState(null);
 
   useEffect(() => {
     const fetchTask = async () => {
       try {
         const res = await taskService.getTask(id);
-        setTask(res.task);
-        setStatus(res.task.status || "Pending");
-        setAssignedTo(res.task.assigned_to || "");
-        setIsCreator(
-          res.task.created_by === JSON.parse(localStorage.getItem("user"))?.id
-        );
-        setIsAssignee(
-          res.task.assigned_to === JSON.parse(localStorage.getItem("user"))?.id
-        );
+        const task = res.task;
+
+        setTask(task);
+        setStatus(task.status || "Pending");
+        setAssignedTo(task.assigned_to || "");
+
+        if (user) {
+          setIsCreator(task.created_by === user.id);
+          setIsAssignee(task.assigned_to === user.id);
+        }
       } catch (err) {
+        console.error(err);
         setError("Failed to fetch task details.");
       }
     };
@@ -42,7 +48,7 @@ function TaskDetail() {
 
     fetchTask();
     fetchUsers();
-  }, [id]);
+  }, [id, user]);
 
   const handleUpdate = async () => {
     try {
@@ -75,6 +81,7 @@ function TaskDetail() {
   return (
     <div className="p-4 max-w-2xl mx-auto">
       <h2 className="text-2xl font-bold mb-4">{task.title}</h2>
+
       {task.image_path && (
         <img
           src={`http://localhost:5000/${task.image_path}`}
@@ -82,6 +89,7 @@ function TaskDetail() {
           className="mb-4 rounded shadow w-full"
         />
       )}
+
       <p className="mb-2">
         <strong>Description:</strong> {task.description}
       </p>
@@ -89,15 +97,29 @@ function TaskDetail() {
         <strong>Address:</strong> {task.address}
       </p>
       <p className="mb-2">
+        <strong>Status:</strong> {task.status}
+      </p>
+      <p className="mb-2">
         <strong>Created At:</strong>{" "}
         {new Date(task.created_at).toLocaleString()}
       </p>
-      <p className="mb-2">
-        <strong>Status:</strong> {task.status}
-      </p>
+
+      {task.creator && (
+        <p className="mb-2">
+          <strong>Created by:</strong> {task.creator.username} (
+          {task.creator.email})
+        </p>
+      )}
+
+      {task.assignee && (
+        <p className="mb-2">
+          <strong>Assigned to:</strong> {task.assignee.username} (
+          {task.assignee.email})
+        </p>
+      )}
 
       {(isCreator || isAssignee) && (
-        <div className="mt-4 space-y-4">
+        <div className="mt-6 space-y-4">
           <div>
             <label className="block text-sm font-medium mb-1">
               Update Status
@@ -126,7 +148,7 @@ function TaskDetail() {
                 <option value="">Unassigned</option>
                 {users.map((user) => (
                   <option key={user.id} value={user.id}>
-                    {user.name}
+                    {user.username}
                   </option>
                 ))}
               </select>
@@ -140,6 +162,7 @@ function TaskDetail() {
             >
               Update Task
             </button>
+
             {isCreator && (
               <button
                 onClick={handleDelete}

@@ -1,38 +1,42 @@
-import api from './api';
+import api from "./api";
 
 export const taskService = {
   // Create a new task
   createTask: async (taskData) => {
     const formData = new FormData();
-    
-    Object.keys(taskData).forEach(key => {
-      if (taskData[key] !== null && taskData[key] !== undefined) {
-        formData.append(key, taskData[key]);
+
+    Object.entries(taskData).forEach(([key, value]) => {
+      if (value !== null && value !== undefined && value !== "") {
+        formData.append(key, value);
       }
     });
-    
-    const response = await api.post('/tasks/', formData, {
+
+    const response = await api.post("/tasks/", formData, {
       headers: {
-        'Content-Type': 'multipart/form-data',
+        "Content-Type": "multipart/form-data",
       },
     });
+
     return response.data;
   },
 
   // Get all tasks with filters
   getTasks: async (filters = {}) => {
     const params = new URLSearchParams();
-    
-    Object.keys(filters).forEach(key => {
-      if (filters[key] !== null && filters[key] !== undefined && filters[key] !== '') {
+
+    Object.keys(filters).forEach((key) => {
+      if (
+        filters[key] !== null &&
+        filters[key] !== undefined &&
+        filters[key] !== ""
+      ) {
         params.append(key, filters[key]);
       }
     });
-    
-    const queryString = params.toString();
-    const url = `/tasks/${queryString ? '?' + queryString : ''}`;
 
-    
+    const queryString = params.toString();
+    const url = `/tasks/${queryString ? "?" + queryString : ""}`;
+
     const response = await api.get(url);
     return response.data;
   },
@@ -60,14 +64,14 @@ export const taskService = {
     const payload = {
       latitude,
       longitude,
-      radius
+      radius,
     };
-    
+
     if (status) {
       payload.status = status;
     }
-    
-    const response = await api.post('/tasks/nearby', payload);
+
+    const response = await api.post("/tasks/nearby", payload);
     return response.data;
   },
 };
@@ -75,7 +79,7 @@ export const taskService = {
 export const userService = {
   // Get all users
   getUsers: async () => {
-    const response = await api.get('/users/');
+    const response = await api.get("/users/");
     return response.data;
   },
 
@@ -91,7 +95,7 @@ export const locationService = {
   getCurrentPosition: () => {
     return new Promise((resolve, reject) => {
       if (!navigator.geolocation) {
-        reject(new Error('Geolocation is not supported by this browser.'));
+        reject(new Error("Geolocation is not supported by this browser."));
         return;
       }
 
@@ -100,7 +104,7 @@ export const locationService = {
           resolve({
             latitude: position.coords.latitude,
             longitude: position.coords.longitude,
-            accuracy: position.coords.accuracy
+            accuracy: position.coords.accuracy,
           });
         },
         (error) => {
@@ -109,7 +113,7 @@ export const locationService = {
         {
           enableHighAccuracy: true,
           timeout: 10000,
-          maximumAge: 300000 // 5 minutes
+          maximumAge: 300000, // 5 minutes
         }
       );
     });
@@ -118,14 +122,16 @@ export const locationService = {
   // Calculate distance between two points (Haversine formula)
   calculateDistance: (lat1, lon1, lat2, lon2) => {
     const R = 6371; // Radius of the Earth in km
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = 
-      Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-      Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLon = ((lon2 - lon1) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((lat1 * Math.PI) / 180) *
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     const distance = R * c;
     return distance;
-  }
+  },
 };
