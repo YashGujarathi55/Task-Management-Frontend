@@ -1,193 +1,435 @@
-import React, { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { taskService, userService } from "../../services/taskService";
+import React, { useState, useEffect } from "react";
 import { useAuth } from "../../contexts/AuthContext";
-
-function TaskDetail() {
-  const { id } = useParams();
-  const navigate = useNavigate();
-  const { user } = useAuth();
-
-  const [task, setTask] = useState(null);
+import { taskService, userService } from "../../services/taskService";
+import { MapPin, Upload, X } from "lucide-react";
+import { toast } from "react-toastify";
+import { useNavigate } from "react-router-dom";
+import { useRef } from "react";
+const CreateTask = () => {
+  const [formData, setFormData] = useState({
+    title: "",
+    description: "",
+    address: "",
+    latitude: "",
+    longitude: "",
+    assigned_to: "",
+  });
+  const [image, setImage] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
   const [users, setUsers] = useState([]);
-  const [status, setStatus] = useState("");
-  const [assignedTo, setAssignedTo] = useState("");
-  const [error, setError] = useState(null);
-  const [isCreator, setIsCreator] = useState(false);
-  const [isAssignee, setIsAssignee] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [locationLoading, setLocationLoading] = useState(false);
+  const { user } = useAuth();
+  const mapRef = useRef(null);
+  const [map, setMap] = useState(null);
+  const [marker, setMarker] = useState(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
-    const fetchTask = async () => {
-      try {
-        const res = await taskService.getTask(id);
-        const task = res.task;
-
-        setTask(task);
-        setStatus(task.status || "Pending");
-        setAssignedTo(task.assigned_to || "");
-
-        if (user) {
-          setIsCreator(task.created_by === user.id);
-          setIsAssignee(task.assigned_to === user.id);
-        }
-      } catch (err) {
-        setError("Failed to fetch task details.");
-      }
-    };
-
-    const fetchUsers = async () => {
-      try {
-        const res = await userService.getUsers();
-        setUsers(res.users || []);
-      } catch (err) {
-        console.error("Failed to fetch users");
-      }
-    };
-
-    fetchTask();
     fetchUsers();
-  }, [id, user]);
+    loadGoogleMapsAPI();
+  }, []);
 
-  const handleUpdate = async () => {
+  const fetchUsers = async () => {
     try {
-      await taskService.updateTask(id, {
-        status,
-        assigned_to: isCreator ? assignedTo : undefined,
+      const response = await userService.getUsers();
+      setUsers(response.users.filter((u) => u.id !== user.id));
+    } catch (error) {
+      console.error("Error fetching users:", error);
+    }
+  };
+
+  const loadGoogleMapsAPI = () => {
+    if (window.google && window.google.maps && window.google.maps.places) {
+      initializeAutocomplete(); // Already loaded, initialize directly
+      return;
+    }
+
+    if (
+      document.querySelector('script[src*="maps.googleapis.com/maps/api/js"]')
+    ) {
+      // Script is already being loaded — wait for it to finish
+      const interval = setInterval(() => {
+        if (window.google && window.google.maps && window.google.maps.places) {
+          clearInterval(interval);
+          initializeAutocomplete();
+        }
+      }, 200);
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${process.env.REACT_APP_GOOGLE_MAPS_API_KEY}&libraries=places`;
+    script.async = true;
+    script.defer = true;
+    script.onload = initializeAutocomplete;
+    document.head.appendChild(script);
+  };
+  const initMap = () => {
+    if (!window.google || !mapRef.current) return;
+
+    const defaultCenter = {
+      lat: parseFloat(formData.latitude) || 19.076,
+      lng: parseFloat(formData.longitude) || 72.8777,
+    };
+
+    const mapInstance = new window.google.maps.Map(mapRef.current, {
+      center: defaultCenter,
+      zoom: 13,
+    });
+
+    setMap(mapInstance);
+
+    const initialMarker = new window.google.maps.Marker({
+      position: defaultCenter,
+      map: mapInstance,
+    });
+
+    setMarker(initialMarker);
+
+    // Handle click to update location
+    mapInstance.addListener("click", (e) => {
+      const lat = e.latLng.lat();
+      const lng = e.latLng.lng();
+
+      setFormData((prev) => ({
+        ...prev,
+        latitude: lat,
+        longitude: lng,
+      }));
+
+      if (marker) marker.setMap(null);
+
+      const newMarker = new window.google.maps.Marker({
+        position: { lat, lng },
+        map: mapInstance,
       });
-      alert("Task updated.");
-      navigate("/tasks");
-    } catch (err) {
-      alert("Failed to update task.");
-    }
+
+      setMarker(newMarker);
+
+      // Reverse geocode clicked point
+      const geocoder = new window.google.maps.Geocoder();
+      geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+        if (status === "OK" && results[0]) {
+          setFormData((prev) => ({
+            ...prev,
+            address: results[0].formatted_address,
+          }));
+        }
+      });
+    });
   };
 
-  const handleDelete = async () => {
-    if (window.confirm("Are you sure you want to delete this task?")) {
-      try {
-        await taskService.deleteTask(id);
-        alert("Task deleted.");
-        navigate("/tasks");
-      } catch (err) {
-        alert("Failed to delete task.");
+  const updateMap = (lat, lng) => {
+    if (!map) return;
+    const position = { lat, lng };
+    map.setCenter(position);
+    if (marker) marker.setMap(null);
+    const newMarker = new window.google.maps.Marker({ position, map });
+    setMarker(newMarker);
+  };
+  const initializeAutocomplete = () => {
+    const input = document.getElementById("address-input");
+    if (!input || !window.google) return;
+
+    const autocomplete = new window.google.maps.places.Autocomplete(input);
+    autocomplete.addListener("place_changed", () => {
+      const place = autocomplete.getPlace();
+      if (place.geometry) {
+        const lat = place.geometry.location.lat();
+        const lng = place.geometry.location.lng();
+        setFormData((prev) => ({
+          ...prev,
+          address: place.formatted_address || place.name,
+          latitude: lat,
+          longitude: lng,
+        }));
+        updateMap(lat, lng);
       }
+    });
+
+    initMap();
+  };
+
+  const getCurrentLocation = () => {
+    setLocationLoading(true);
+    if (!navigator.geolocation) {
+      toast.error("Geolocation is not supported by this browser");
+      setLocationLoading(false);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        setFormData((prev) => ({
+          ...prev,
+          latitude: latitude.toString(),
+          longitude: longitude.toString(),
+        }));
+
+        // Reverse geocoding to get address
+        try {
+          if (window.google) {
+            const geocoder = new window.google.maps.Geocoder();
+            const latlng = { lat: latitude, lng: longitude };
+
+            geocoder.geocode({ location: latlng }, (results, status) => {
+              if (status === "OK" && results[0]) {
+                setFormData((prev) => ({
+                  ...prev,
+                  address: results[0].formatted_address,
+                }));
+              }
+            });
+          }
+        } catch (error) {
+          console.error("Error getting address:", error);
+        }
+
+        setLocationLoading(false);
+        toast.success("Location detected successfully");
+      },
+      (error) => {
+        console.error("Error getting location:", error);
+        toast.error("Failed to get current location");
+        setLocationLoading(false);
+      }
+    );
+  };
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  const handleImageChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        // 5MB limit
+        toast.error("Image size should be less than 5MB");
+        return;
+      }
+
+      setImage(file);
+
+      // Create preview
+      const reader = new FileReader();
+      reader.onload = () => {
+        setImagePreview(reader.result);
+      };
+      reader.readAsDataURL(file);
     }
   };
 
-  if (error) return <div className="p-4 text-red-500">{error}</div>;
-  if (!task) return <div className="p-4">Loading task...</div>;
+  const removeImage = () => {
+    setImage(null);
+    setImagePreview(null);
+    document.getElementById("image-input").value = "";
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    if (!formData.title.trim()) {
+      toast.error("Title is required");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const taskPayload = {
+        title: formData.title,
+        description: formData.description,
+        address: formData.address,
+        latitude: formData.latitude,
+        longitude: formData.longitude,
+        assigned_to: formData.assigned_to,
+        image: image, // can be null
+      };
+
+      await taskService.createTask(taskPayload);
+      toast.success("Task created successfully");
+      navigate("/tasks");
+    } catch (error) {
+      toast.error("Failed to create task");
+      console.error("Error creating task:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <div className="max-w-3xl mx-auto p-6 bg-white shadow rounded-lg space-y-6">
-      <h2 className="text-3xl font-bold text-gray-800 border-b pb-2">
-        {task.title}
-      </h2>
+    <div className="max-w-2xl mx-auto space-y-6">
+      <div className="bg-white rounded-lg shadow-md p-6">
+        <h1 className="text-2xl font-bold text-gray-900 mb-6">
+          Create New Task
+        </h1>
 
-      {task.image_path && (
-        <img
-          src={`http://localhost:5000/${task.image_path}`}
-          alt="Task"
-          className="rounded-lg w-full max-h-[400px] object-cover shadow"
-        />
-      )}
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm text-gray-700">
-        <div>
-          <span className="font-semibold">Description:</span> {task.description}
-        </div>
-        <div>
-          <span className="font-semibold">Address:</span> {task.address}
-        </div>
-        <div>
-          <span className="font-semibold">Created At:</span>{" "}
-          {new Date(task.created_at).toLocaleString()}
-        </div>
-        <div>
-          <span className="font-semibold">Status:</span>{" "}
-          <span
-            className={`inline-block px-2 py-1 rounded text-white text-xs ${
-              task.status === "Done"
-                ? "bg-green-600"
-                : task.status === "In Progress"
-                ? "bg-yellow-500"
-                : "bg-gray-500"
-            }`}
-          >
-            {task.status}
-          </span>
-        </div>
-
-        {task.creator && (
+        <form onSubmit={handleSubmit} className="space-y-6">
           <div>
-            <span className="font-semibold">Created by:</span>{" "}
-            {task.creator.username} ({task.creator.email})
+            <label
+              htmlFor="title"
+              className="block text-sm font-medium text-gray-700 mb-2"
+            >
+              Title *
+            </label>
+            <input
+              type="text"
+              id="title"
+              name="title"
+              value={formData.title}
+              onChange={handleInputChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Enter task title"
+              required
+            />
           </div>
-        )}
-        {task.assignee && (
-          <div>
-            <span className="font-semibold">Assigned to:</span>{" "}
-            {task.assignee.username} ({task.assignee.email})
-          </div>
-        )}
-      </div>
 
-      {(isCreator || isAssignee) && (
-        <div className="border-t pt-4 space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1">
-              Update Status
+            <label
+              htmlFor="description"
+              className="block text-sm font-medium text-gray-700 mb-2"
+            >
+              Description
+            </label>
+            <textarea
+              id="description"
+              name="description"
+              value={formData.description}
+              onChange={handleInputChange}
+              rows="4"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Enter task description"
+            />
+          </div>
+
+          <div>
+            <label
+              htmlFor="address-input"
+              className="block text-sm font-medium text-gray-700 mb-2"
+            >
+              Location
+            </label>
+            <div className="space-y-3">
+              <input
+                type="text"
+                id="address-input"
+                name="address"
+                value={formData.address}
+                onChange={handleInputChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Search for an address"
+              />
+              <button
+                type="button"
+                onClick={getCurrentLocation}
+                disabled={locationLoading}
+                className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+              >
+                <MapPin size={16} />
+                <span>
+                  {locationLoading
+                    ? "Getting location..."
+                    : "Use Current Location"}
+                </span>
+              </button>
+            </div>
+            {formData.latitude && formData.longitude && (
+              <p className="text-sm text-gray-500 mt-2">
+                Coordinates: {parseFloat(formData.latitude).toFixed(4)},{" "}
+                {parseFloat(formData.longitude).toFixed(4)}
+              </p>
+            )}
+            <div
+              ref={mapRef}
+              className="mt-4 rounded border border-gray-300"
+              style={{ width: "100%", height: "300px" }}
+            ></div>
+          </div>
+
+          <div>
+            <label
+              htmlFor="assigned_to"
+              className="block text-sm font-medium text-gray-700 mb-2"
+            >
+              Assign to User (Optional)
             </label>
             <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-              className="w-full border rounded px-3 py-2"
+              id="assigned_to"
+              name="assigned_to"
+              value={formData.assigned_to}
+              onChange={handleInputChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              <option value="Pending">Pending</option>
-              <option value="In Progress">In Progress</option>
-              <option value="Done">Done</option>
+              <option value="">Select a user (optional)</option>
+              {users.map((user) => (
+                <option key={user.id} value={user.id}>
+                  {user.username} ({user.email})
+                </option>
+              ))}
             </select>
           </div>
 
-          {isCreator && (
-            <div>
-              <label className="block text-sm font-medium mb-1">
-                Reassign Task
-              </label>
-              <select
-                value={assignedTo}
-                onChange={(e) => setAssignedTo(e.target.value)}
-                className="w-full border rounded px-3 py-2"
-              >
-                <option value="">Unassigned</option>
-                {users.map((user) => (
-                  <option key={user.id} value={user.id}>
-                    {user.username}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          <div className="flex flex-wrap gap-4 pt-2">
-            <button
-              onClick={handleUpdate}
-              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition"
+          <div>
+            <label
+              htmlFor="image-input"
+              className="block text-sm font-medium text-gray-700 mb-2"
             >
-              Update Task
-            </button>
-
-            {isCreator && (
-              <button
-                onClick={handleDelete}
-                className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition"
-              >
-                Delete Task
-              </button>
-            )}
+              Task Image (Optional)
+            </label>
+            <div className="space-y-3">
+              <input
+                type="file"
+                id="image-input"
+                accept="image/*"
+                onChange={handleImageChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              {imagePreview && (
+                <div className="relative inline-block">
+                  <img
+                    src={imagePreview}
+                    alt="Preview"
+                    className="w-32 h-32 object-cover rounded-lg border border-gray-300"
+                  />
+                  <button
+                    type="button"
+                    onClick={removeImage}
+                    className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+
+          <div className="flex justify-end space-x-4">
+            <button
+              type="button"
+              onClick={() => navigate("/tasks")}
+              className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+            >
+              {loading ? "Creating..." : "Create Task"}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
-}
+};
 
-export default TaskDetail;
+export default CreateTask;

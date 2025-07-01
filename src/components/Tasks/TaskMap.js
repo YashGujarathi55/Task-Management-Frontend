@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
-import { taskService } from "../../services/taskService";
+import { taskService, locationService } from "../../services/taskService";
 import { Link } from "react-router-dom";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -32,8 +32,19 @@ const TaskMap = () => {
 
     loadTasks();
   }, []);
+  const [defaultCenter, setDefaultCenter] = useState({
+    lat: 19.076,
+    lng: 72.8777,
+  });
 
-  const defaultCenter = [19.076, 72.8777]; // Mumbai default
+  useEffect(() => {
+    locationService.getCurrentPosition().then((position) => {
+      setDefaultCenter({
+        lat: position.latitude,
+        lng: position.longitude,
+      });
+    });
+  }, []);
 
   return (
     <div className="p-4">

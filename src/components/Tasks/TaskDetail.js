@@ -6,14 +6,13 @@ import { useAuth } from "../../contexts/AuthContext";
 function TaskDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuth(); // 🔁 Get logged-in user from context
+  const { user } = useAuth();
 
   const [task, setTask] = useState(null);
   const [users, setUsers] = useState([]);
   const [status, setStatus] = useState("");
   const [assignedTo, setAssignedTo] = useState("");
   const [error, setError] = useState(null);
-
   const [isCreator, setIsCreator] = useState(false);
   const [isAssignee, setIsAssignee] = useState(false);
 
@@ -32,7 +31,6 @@ function TaskDetail() {
           setIsAssignee(task.assigned_to === user.id);
         }
       } catch (err) {
-        console.error(err);
         setError("Failed to fetch task details.");
       }
     };
@@ -79,47 +77,61 @@ function TaskDetail() {
   if (!task) return <div className="p-4">Loading task...</div>;
 
   return (
-    <div className="p-4 max-w-2xl mx-auto">
-      <h2 className="text-2xl font-bold mb-4">{task.title}</h2>
+    <div className="max-w-3xl mx-auto p-6 bg-white shadow rounded-lg space-y-6">
+      <h2 className="text-3xl font-bold text-gray-800 border-b pb-2">
+        {task.title}
+      </h2>
 
       {task.image_path && (
         <img
           src={`http://localhost:5000/${task.image_path}`}
           alt="Task"
-          className="mb-4 rounded shadow w-full"
+          className="rounded-lg w-full max-h-[400px] object-cover shadow"
         />
       )}
 
-      <p className="mb-2">
-        <strong>Description:</strong> {task.description}
-      </p>
-      <p className="mb-2">
-        <strong>Address:</strong> {task.address}
-      </p>
-      <p className="mb-2">
-        <strong>Status:</strong> {task.status}
-      </p>
-      <p className="mb-2">
-        <strong>Created At:</strong>{" "}
-        {new Date(task.created_at).toLocaleString()}
-      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm text-gray-700">
+        <div>
+          <span className="font-semibold">Description:</span> {task.description}
+        </div>
+        <div>
+          <span className="font-semibold">Address:</span> {task.address}
+        </div>
+        <div>
+          <span className="font-semibold">Created At:</span>{" "}
+          {new Date(task.created_at).toLocaleString()}
+        </div>
+        <div>
+          <span className="font-semibold">Status:</span>{" "}
+          <span
+            className={`inline-block px-2 py-1 rounded text-white text-xs ${
+              task.status === "Done"
+                ? "bg-green-600"
+                : task.status === "In Progress"
+                ? "bg-yellow-500"
+                : "bg-gray-500"
+            }`}
+          >
+            {task.status}
+          </span>
+        </div>
 
-      {task.creator && (
-        <p className="mb-2">
-          <strong>Created by:</strong> {task.creator.username} (
-          {task.creator.email})
-        </p>
-      )}
-
-      {task.assignee && (
-        <p className="mb-2">
-          <strong>Assigned to:</strong> {task.assignee.username} (
-          {task.assignee.email})
-        </p>
-      )}
+        {task.creator && (
+          <div>
+            <span className="font-semibold">Created by:</span>{" "}
+            {task.creator.username} ({task.creator.email})
+          </div>
+        )}
+        {task.assignee && (
+          <div>
+            <span className="font-semibold">Assigned to:</span>{" "}
+            {task.assignee.username} ({task.assignee.email})
+          </div>
+        )}
+      </div>
 
       {(isCreator || isAssignee) && (
-        <div className="mt-6 space-y-4">
+        <div className="border-t pt-4 space-y-4">
           <div>
             <label className="block text-sm font-medium mb-1">
               Update Status
@@ -127,7 +139,7 @@ function TaskDetail() {
             <select
               value={status}
               onChange={(e) => setStatus(e.target.value)}
-              className="border px-2 py-1 rounded"
+              className="w-full border rounded px-3 py-2"
             >
               <option value="Pending">Pending</option>
               <option value="In Progress">In Progress</option>
@@ -143,7 +155,7 @@ function TaskDetail() {
               <select
                 value={assignedTo}
                 onChange={(e) => setAssignedTo(e.target.value)}
-                className="border px-2 py-1 rounded"
+                className="w-full border rounded px-3 py-2"
               >
                 <option value="">Unassigned</option>
                 {users.map((user) => (
@@ -155,10 +167,10 @@ function TaskDetail() {
             </div>
           )}
 
-          <div className="flex gap-4 mt-4">
+          <div className="flex flex-wrap gap-4 pt-2">
             <button
               onClick={handleUpdate}
-              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition"
             >
               Update Task
             </button>
@@ -166,7 +178,7 @@ function TaskDetail() {
             {isCreator && (
               <button
                 onClick={handleDelete}
-                className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
+                className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition"
               >
                 Delete Task
               </button>
