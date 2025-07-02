@@ -1,5 +1,6 @@
-import React, { createContext, useState, useContext, useEffect } from "react";
+import React, { createContext, useContext, useEffect, useState } from "react";
 import api from "../services/api";
+import { setAuthErrorHandler } from "../services/authBridge"; // ✅ IMPORT
 
 const AuthContext = createContext();
 
@@ -16,6 +17,22 @@ export const AuthProvider = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  const logout = () => {
+    localStorage.removeItem("token");
+    delete api.defaults.headers.common["Authorization"];
+    setUser(null);
+    setIsAuthenticated(false);
+  };
+
+  const handleAuthError = () => {
+    logout(); // You can add toast or logging here if needed
+  };
+
+  // ✅ Register the handler globally on mount
+  useEffect(() => {
+    setAuthErrorHandler(handleAuthError);
+  }, []);
+
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (token) {
@@ -28,12 +45,11 @@ export const AuthProvider = ({ children }) => {
 
   const fetchProfile = async () => {
     try {
-      const response = await api.get("/auth/profile");
-      setUser(response.data.user);
+      const res = await api.get("/auth/profile");
+      setUser(res.data.user);
       setIsAuthenticated(true);
-    } catch (error) {
-      console.error("Failed to fetch profile:", error);
-      logout(); // No redirect here — App handles it
+    } catch (err) {
+      logout();
     } finally {
       setLoading(false);
     }
@@ -41,18 +57,12 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (username, password) => {
     try {
-      const response = await api.post("/auth/login", {
-        username,
-        password,
-      });
-      console.log("response :>> ", response);
-      const { access_token, user } = response.data;
+      const res = await api.post("/auth/login", { username, password });
+      const { access_token, user } = res.data;
       localStorage.setItem("token", access_token);
       api.defaults.headers.common["Authorization"] = `Bearer ${access_token}`;
-
       setUser(user);
       setIsAuthenticated(true);
-
       return { success: true };
     } catch (error) {
       return {
@@ -64,19 +74,16 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (username, email, password) => {
     try {
-      const response = await api.post("/auth/register", {
+      const res = await api.post("/auth/register", {
         username,
         email,
         password,
       });
-
-      const { access_token, user } = response.data;
+      const { access_token, user } = res.data;
       localStorage.setItem("token", access_token);
       api.defaults.headers.common["Authorization"] = `Bearer ${access_token}`;
-
       setUser(user);
       setIsAuthenticated(true);
-
       return { success: true };
     } catch (error) {
       return {
@@ -84,13 +91,6 @@ export const AuthProvider = ({ children }) => {
         error: error.response?.data?.error || "Registration failed",
       };
     }
-  };
-
-  const logout = () => {
-    localStorage.removeItem("token");
-    delete api.defaults.headers.common["Authorization"];
-    setUser(null);
-    setIsAuthenticated(false);
   };
 
   const value = {
